@@ -47,6 +47,41 @@ var (
 	libcPath = "libc.so"
 )
 
+// qnxLibsocket names the functions QNX has in libsocket.so.3 rather than
+// libc.so.3 (the same split as in the syscall package for qnx).
+var qnxLibsocket = map[string]bool{
+	"accept": true, "bind": true, "connect": true, "getpeername": true,
+	"getsockname": true, "getsockopt": true, "listen": true, "recvfrom": true,
+	"recvmsg": true, "sendmsg": true, "sendto": true, "setsockopt": true,
+	"shutdown": true, "socket": true, "socketpair": true,
+}
+
+// QNX has no SA_RESTART: a signal interrupts any call that is a message
+// to a resource manager (socket, bind, fcntl, open, ...) with EINTR, even
+// with SA_RESTART set, and Go's handlers rely on it. So on qnx each
+// wrapper retries on EINTR, except the calls SA_RESTART would not
+// restart either, in two classes (the same rule as the syscall package
+// for qnx):
+//
+//   - A call that waits, with a timeout or until a signal (Nanosleep,
+//     Select, poll, sigsuspend, pause, ...), is not retried: a retry
+//     restarts the wait or defeats its purpose.
+//   - A call that may have had its effect before the interrupt is not
+//     retried: connect carries on asynchronously once interrupted
+//     (callers treat its EINTR like EINPROGRESS), spawn may have created
+//     the child, and close may have released the descriptor, which a
+//     retry could then close for someone else. exit does not return.
+//
+// Every qnx function that returns an error must be in exactly one of
+// these two lists, so that adding a call is a decision about it;
+// mksyscall fails otherwise.
+var qnxRetry = map[string]bool{}
+
+var qnxNoRetry = map[string]bool{
+	"Close": true, "Nanosleep": true, "Select": true, "connect": true,
+	"exit": true, "spawn": true,
+}
+
 var (
 	regexpComma          = regexp.MustCompile(`\s*,\s*`)
 	regexpParamKV        = regexp.MustCompile(`^(\S*) (\S*)$`)
@@ -135,6 +170,10 @@ func main() {
 
 	if goos == "darwin" {
 		libcPath = "/usr/lib/libSystem.B.dylib"
+		*libc = true
+	}
+	if goos == "qnx" {
+		libcPath = "libc.so.3"
 		*libc = true
 	}
 
@@ -363,6 +402,18 @@ func main() {
 				} else {
 					text += fmt.Sprintf("\t%s, %s, %s := %s\n", ret[0], ret[1], ret[2], call)
 				}
+				if goos == "qnx" && ret[2] == "e1" {
+					// See qnxRetry.
+					switch {
+					case qnxRetry[funct] == qnxNoRetry[funct]:
+						fmt.Fprintf(os.Stderr, "%s:%s must be in exactly one of qnxRetry and qnxNoRetry\n", path, funct)
+						os.Exit(1)
+					case qnxRetry[funct]:
+						text += "\tfor e1 == EINTR {\n"
+						text += fmt.Sprintf("\t\t%s, %s, %s = %s\n", ret[0], ret[1], ret[2], call)
+						text += "\t}\n"
+					}
+				}
 			}
 			text += body
 
@@ -385,7 +436,11 @@ func main() {
 				text += fmt.Sprintf("var libc_%s_trampoline_addr uintptr\n\n", libcFn)
 				// Assembly trampoline calls the libc_* function, which this magic
 				// redirects to use the function from libSystem.
-				text += fmt.Sprintf("//go:cgo_import_dynamic libc_%s %s %q\n", libcFn, libcFn, libcPath)
+				lib := libcPath
+				if goos == "qnx" && qnxLibsocket[libcFn] {
+					lib = "libsocket.so.3"
+				}
+				text += fmt.Sprintf("//go:cgo_import_dynamic libc_%s %s %q\n", libcFn, libcFn, lib)
 				text += "\n"
 			}
 		}

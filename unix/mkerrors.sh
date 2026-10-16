@@ -35,6 +35,10 @@ if [[ "$GOOS" = "solaris" ]]; then
 fi
 
 uname=$(uname)
+if [[ "$GOOS" == "qnx" ]]; then
+	# Cross-generated on a non-QNX host, with CC a C compiler for QNX.
+	uname=QNX
+fi
 
 includes_AIX='
 #include <net/if.h>
@@ -422,6 +426,24 @@ includes_OpenBSD='
 #define WALTSIG			0x4
 '
 
+includes_QNX='
+#include <limits.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/sockio.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <sys/statvfs.h>
+#include <net/if.h>
+#include <net/if_types.h>
+#include <net/route.h>
+#include <netinet/in.h>
+#include <termios.h>
+#include <netinet/ip.h>
+#include <netinet/ip_mroute.h>
+'
+
 includes_SunOS='
 #include <limits.h>
 #include <sys/types.h>
@@ -463,6 +485,11 @@ includes='
 #include <sys/resource.h>
 #include <time.h>
 '
+if [[ "$uname" == "QNX" ]]; then
+	# QNX has no <sys/signal.h>; <signal.h> covers it.
+	includes=${includes/'#include <sys/signal.h>'/}
+fi
+
 ccflags="$@"
 
 # Write go tool cgo -godefs input.
@@ -470,7 +497,7 @@ ccflags="$@"
 	echo package unix
 	echo
 	echo '/*'
-	indirect="includes_$(uname)"
+	indirect="includes_$uname"
 	echo "${!indirect} $includes"
 	echo '*/'
 	echo 'import "C"'
@@ -481,8 +508,17 @@ ccflags="$@"
 	# The gcc command line prints all the #defines
 	# it encounters while processing the input
 	echo "${!indirect} $includes" | $CC -x c - -E -dM $ccflags |
-	awk '
+	awk -v qnx="$([[ "$uname" == "QNX" ]] && echo 1)" '
 		$1 != "#define" || $2 ~ /\(/ || $3 == "" {next}
+
+		# QNX: old BSD tty ioctls whose argument structs are not declared,
+		# a broken IFT_ value, and E*_DYNAMIC errno aliases that name libc
+		# variables rather than constants.
+		qnx && $2 ~ /^TIOC(GETC|GETP|GLTC|SETC|SETN|SETP|SLTC)$/ {next}
+		# The System V termio ioctls, whose struct termio is not declared.
+		qnx && $2 ~ /^TC(GETA|SETAF?|SETAW)$/ {next}
+		qnx && $2 == "IFT_PON622" {next}
+		qnx && $2 ~ /^E[A-Z0-9_]+_DYNAMIC$/ {next}
 
 		$2 ~ /^E([ABCD]X|[BIS]P|[SD]I|S|FL)$/ {next}  # 386 registers
 		$2 ~ /^(SIGEV_|SIGSTKSZ|SIGRT(MIN|MAX))/ {next}
@@ -662,7 +698,10 @@ ccflags="$@"
 # Pull out the error names for later.
 errors=$(
 	echo '#include <errno.h>' | $CC -x c - -E -dM $ccflags |
-	awk '$1=="#define" && $2 ~ /^E[A-Z0-9_]+$/ { print $2 }' |
+	awk -v qnx="$([[ "$uname" == "QNX" ]] && echo 1)" '
+		# QNX: skip aliases such as EALREADY_DYNAMIC that name libc variables.
+		qnx && $3 !~ /^[0-9A-Z]/ {next}
+		$1=="#define" && $2 ~ /^E[A-Z0-9_]+$/ { print $2 }' |
 	sort
 )
 

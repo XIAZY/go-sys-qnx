@@ -17,6 +17,7 @@ mksysctl=""
 zsysctl="zsysctl_$GOOSARCH.go"
 mksysnum=
 mktypes=
+mkpost="go run mkpost.go"
 mkasm=
 run="sh"
 cmd=""
@@ -201,6 +202,35 @@ openbsd_riscv64)
 	# API consistent across platforms.
 	mktypes="GOARCH=$GOARCH go tool cgo -godefs -- -fsigned-char"
 	;;
+qnx_386)
+	# Generated on a non-QNX build host: CC is a C compiler for i386 QNX
+	# 6.5 with its headers, and GORUN runs the helper program on a QNX
+	# machine. 64-bit off_t, ino_t and blkcnt_t, like every other Go port;
+	# these must be set on the command line (see types_qnx.go).
+	# The helper programs run on the build host, not on qnx/386.
+	gorun="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) GOOS_TARGET=qnx GOARCH_TARGET=$GOARCH go run"
+	mkerrors="$mkerrors -m32 -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	mksyscall="$gorun mksyscall.go -l32 -libc"
+	mksysnum=
+	mktypes="GOARCH=$GOARCH go tool cgo -godefs -- -fsigned-char -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	mkpost="$gorun mkpost.go"
+	mkasm="$gorun mkasm.go"
+	;;
+qnx_arm)
+	# Generated on a non-QNX build host from the QNX 6.5 ARM headers (the
+	# oldest supported system): CC parses those headers for ARM, and GORUN
+	# runs the helper program on a QNX machine. The error and signal
+	# tables do not depend on the CPU, so a QNX 6.5 machine of any
+	# architecture gives them. 64-bit arguments go in even/odd register
+	# pairs (-arm).
+	gorun="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) GOOS_TARGET=qnx GOARCH_TARGET=$GOARCH go run"
+	mkerrors="$mkerrors -marm -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	mksyscall="$gorun mksyscall.go -l32 -arm -libc"
+	mksysnum=
+	mktypes="GOARCH=$GOARCH go tool cgo -godefs -- -fsigned-char -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	mkpost="$gorun mkpost.go"
+	mkasm="$gorun mkasm.go"
+	;;
 solaris_amd64)
 	mksyscall="go run mksyscall_solaris.go"
 	mkerrors="$mkerrors -m64"
@@ -245,6 +275,6 @@ esac
 	esac
 	if [ -n "$mksysctl" ]; then echo "$mksysctl |gofmt >$zsysctl"; fi
 	if [ -n "$mksysnum" ]; then echo "$mksysnum |gofmt >zsysnum_$GOOSARCH.go"; fi
-	if [ -n "$mktypes" ]; then echo "$mktypes types_$GOOS.go | go run mkpost.go > ztypes_$GOOSARCH.go"; fi
+	if [ -n "$mktypes" ]; then echo "$mktypes types_$GOOS.go | $mkpost > ztypes_$GOOSARCH.go"; fi
 	if [ -n "$mkasm" ]; then echo "$mkasm $GOOS $GOARCH"; fi
 ) | $run

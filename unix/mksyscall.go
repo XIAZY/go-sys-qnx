@@ -75,7 +75,32 @@ var qnxLibsocket = map[string]bool{
 // Every qnx function that returns an error must be in exactly one of
 // these two lists, so that adding a call is a decision about it;
 // mksyscall fails otherwise.
-var qnxRetry = map[string]bool{}
+var qnxRetry = map[string]bool{
+	"accept": true, "Access": true, "bindLibc": true, "Chdir": true,
+	"Chmod": true, "Chown": true, "Chroot": true, "Dup": true,
+	"Dup2": true, "Fchdir": true, "Fchmod": true, "Fchown": true,
+	"fcntl": true, "fcntlPtr": true, "Flock": true, "Fstat": true,
+	"Fstatvfs": true, "Fsync": true, "Ftruncate": true, "getgroups": true,
+	"getpeername": true, "Getpgid": true, "Getrlimit": true,
+	"Getrusage": true, "Getsid": true, "getsockname": true,
+	"getsockopt": true, "Gettimeofday": true, "ioctl": true,
+	"ioctlPtr": true, "Kill": true, "Lchown": true, "Link": true,
+	"Listen": true, "Lstat": true, "Mkdir": true,
+	"Mkfifo": true, "Mknod": true, "Mlock": true, "Mlockall": true,
+	"mmap": true, "Mprotect": true, "Msync": true, "Munlock": true,
+	"Munlockall": true, "munmap": true, "open": true, "pipe": true,
+	"pread": true, "pwrite": true, "read": true, "readlen": true,
+	"Readlink": true, "recvfrom": true, "recvmsg": true, "Rename": true,
+	"Rmdir": true, "Seek": true, "sendmsg": true, "sendto": true,
+	"Setegid": true, "Seteuid": true, "Setgid": true, "setgroups": true,
+	"Setpgid": true, "Setpriority": true, "Setregid": true,
+	"Setreuid": true, "setrlimit": true, "Setsid": true,
+	"setsockopt": true, "Settimeofday": true, "Setuid": true,
+	"Shutdown": true, "socket": true, "socketpair": true, "Stat": true,
+	"Statvfs": true, "Symlink": true, "Sync": true, "Truncate": true,
+	"Uname": true, "Unlink": true, "utimes": true, "wait4": true,
+	"write": true, "writelen": true,
+}
 
 var qnxNoRetry = map[string]bool{
 	"Close": true, "Nanosleep": true, "Select": true, "connect": true,

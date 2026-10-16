@@ -518,6 +518,9 @@ ccflags="$@"
 		# The System V termio ioctls, whose struct termio is not declared.
 		qnx && $2 ~ /^TC(GETA|SETAF?|SETAW)$/ {next}
 		qnx && $2 == "IFT_PON622" {next}
+		# RLIM_INFINITY is ((rlim_t)-3) with rlim_t unsigned 64-bit, but
+		# comes out as -3; syscall_qnx.go defines it.
+		qnx && $2 == "RLIM_INFINITY" {next}
 		qnx && $2 ~ /^E[A-Z0-9_]+_DYNAMIC$/ {next}
 
 		$2 ~ /^E([ABCD]X|[BIS]P|[SD]I|S|FL)$/ {next}  # 386 registers

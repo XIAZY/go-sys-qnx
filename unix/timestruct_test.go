@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
+//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || qnx || solaris
 
 package unix_test
 
@@ -34,13 +34,19 @@ func TestTimeToTimespec(t *testing.T) {
 		{time.Date(1901, time.December, 13, 20, 45, 51, 0, time.UTC), false},
 	}
 
-	// Currently all targets have either int32 or int64 for Timespec.Sec.
-	// If there were a new target with unsigned or floating point type for
-	// it, this test must be adjusted.
+	// Currently all targets have int32, uint32 (QNX) or int64 for
+	// Timespec.Sec. If there were a new target with another type for it,
+	// this test must be adjusted.
 	have64BitTime := (unsafe.Sizeof(unix.Timespec{}.Sec) == 8)
+	sec := unix.Timespec{}.Sec
+	sec--
+	haveUnsigned32BitTime := !have64BitTime && sec > 0
 	for _, tt := range timeTests {
 		ts, err := unix.TimeToTimespec(tt.time)
 		tt.valid = tt.valid || have64BitTime
+		if haveUnsigned32BitTime {
+			tt.valid = tt.time.Unix() >= 0 && tt.time.Unix() <= 1<<32-1
+		}
 		if tt.valid && err != nil {
 			t.Errorf("TimeToTimespec(%v): %v", tt.time, err)
 		}
